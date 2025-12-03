@@ -1,8 +1,4 @@
 /**
- * Part 3, 2.5, 3.5 of Bluetooth portion of ECE4180 Lab 3
- * Code for BLE Client to receive/modify messages, in this case
- * to read and write to BLE characteristic and turn on LED
- *
  * Based on default example provided under BLE->Client
  * author Jason Hsiao
  *
