@@ -1,207 +1,100 @@
 /**
- * Based on default example provided under BLE->Client
+ * Based on default example provided under BLE->Server
  * author Jason Hsiao
  *
  * original author unknown
  * updated by chegewara
  */
+// Useful Bluetooth packages
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
 
-#define BUTTON 15
-#define LED 5
-#define LED2 22
-#include "BLEDevice.h"
 
-// Pass in the corresponding UIUDs of the service we wish to connect to
-// The remote service we wish to connect to.
-static BLEUUID serviceUUID("b16017de-f43c-4973-a564-edc12ccbda40");
-// The characteristic of the remote service we are interested in.
-static BLEUUID charUUID("27d92dfc-5e44-41ba-a3d0-5b5364b74a6e");
-// Create another BLEUUID for the messaging functionality
-static BLEUUID charUUID2("39df8d8a-3e34-4531-8804-336f19ba6eef");
-// Connection control booleans
-static boolean doConnect = false;
-static boolean connected = false;
-static boolean doScan = false;
-bool connection = false;
+// Set UIUDs for your service and any characteristics you might need using online UIUD generator: https://www.uuidgenerator.net/
+#define SERVICE_UUID "b16017de-f43c-4973-a564-edc12ccbda40"
+#define CHARACTERISTIC_UUID "27d92dfc-5e44-41ba-a3d0-5b5364b74a6e"
+#define CHARACTERISTICTWO_UUID "39df8d8a-3e34-4531-8804-336f19ba6eef"
 
-// Pointers to the our Bluetooth objects
-static BLERemoteCharacteristic *pRemoteCharacteristic;
-static BLERemoteCharacteristic *pRemoteCharacteristicWrite;
-static BLERemoteCharacteristic *pMessageRemoteCharacteristic;
-static BLEAdvertisedDevice *myDevice;
+// These are pointers to your BLE characteristic objects
+// BLE Characteristics for LED and for messaging
+BLECharacteristic *pCharacteristic;
+BLECharacteristic *pSecondCharacteristic;
 
-// Callback functions
-static void notifyCallback(BLERemoteCharacteristic *pBLERemoteCharacteristic, uint8_t *pData, size_t length, bool isNotify) {
-  Serial.print("Notify callback for characteristic ");
-  Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
-  Serial.print(" of data length ");
-  Serial.println(length);
-  Serial.print("data: ");
-  Serial.write(pData, length);
-  Serial.println();
-  connection = true;
-}
 
-class MyClientCallback : public BLEClientCallbacks {
-  void onConnect(BLEClient *pclient) {}
+// Define any constants or variables you might need for operating a pushbutton
+#define BUTTON 4
+bool buttonState = false;
 
-  void onDisconnect(BLEClient *pclient) {
-    connected = false;
-    Serial.println("onDisconnect");
-  }
-};
 
-bool connectToServer() {
-  Serial.print("Forming a connection to ");
-  Serial.println(myDevice->getAddress().toString().c_str());
-
-  // Create a client using the BLEDevice API we used to create the server
-  BLEClient *pClient = BLEDevice::createClient();
-  Serial.println("Client successfully created!");
-
-  pClient->setClientCallbacks(new MyClientCallback());
-
-  // Connect to the remote BLE Server.
-  pClient->connect(myDevice);  // if you pass BLEAdvertisedDevice instead of address, it will be recognized type of peer device address (public or private)
-  Serial.println(" - Connected to server");
-  pClient->setMTU(517);  //set client to request maximum MTU from server (default is 23 otherwise)
-
-  // Obtain a reference to the service we are after in the remote BLE server.
-  BLERemoteService *pRemoteService = pClient->getService(serviceUUID);
-  if (pRemoteService == nullptr) {
-    Serial.print("Failed to find our service UUID: ");
-    Serial.println(serviceUUID.toString().c_str());
-    pClient->disconnect();
-    return false;
-  }
-  Serial.println(" - Found our service");
-
-  // Obtain a reference to the characteristic in the service of the remote BLE server.
-  // In the same way that we found our service, but use that Service to get our desired Characteristic
-  pRemoteCharacteristic = pRemoteService->getCharacteristic(charUUID);
-  if (pRemoteCharacteristic == nullptr) {
-    Serial.print("Failed to find our characteristic UUID: ");
-    Serial.println(charUUID.toString().c_str());
-    pClient->disconnect();
-    return false;
-  }
-  Serial.println(" - Found our characteristic");
-
-  // Using the same remote service, obtain the second characteristic like we just did above
-  pRemoteCharacteristicWrite = pRemoteService->getCharacteristic(charUUID2);
-  if (pRemoteCharacteristicWrite == nullptr) {
-    Serial.print("Failed to find our characteristic UUID: ");
-    Serial.println(charUUID.toString().c_str());
-    pClient->disconnect();
-    return false;
-  }
-  // Just some sample code during set-up on working with the remote characteristic if you need a reference when writing code
-  // Read the value of the characteristic.
-  if (pRemoteCharacteristic->canRead()) {
-    String value = pRemoteCharacteristic->readValue();
-    Serial.print("The characteristic value was: ");
-    Serial.println(value.c_str());
-  }
-
-  // Assuming that your characteristic will update you when it changes, how would you register/subscribe for these notifications
-  // Note: You will need to pass in your notifyCallback for this to work
-  if (pRemoteCharacteristic->canNotify()) {
-    pRemoteCharacteristic->registerForNotify(notifyCallback); // or something like that ;)
-  }
- 
-  //  Sign up your second characteristic the same way you did the first
-  if (pRemoteCharacteristicWrite->canNotify()) {
-    pRemoteCharacteristicWrite->registerForNotify(notifyCallback);
-  }
-  connected = true;
-  return true;
-}
-/**
- * Scan for BLE servers and find the first one that advertises the service we are looking for.
- */
-class MyAdvertisedDeviceCallbacks : public BLEAdvertisedDeviceCallbacks {
-  /**
-   * Called for each advertising BLE server.
-   */
-  void onResult(BLEAdvertisedDevice advertisedDevice) {
-    Serial.print("BLE Advertised Device found: ");
-    Serial.println(advertisedDevice.toString().c_str());
-
-    // We have found a device, let us now see if it contains the service we are looking for.
-    if (advertisedDevice.haveServiceUUID() && advertisedDevice.isAdvertisingService(serviceUUID)) {
-      Serial.println("found");
-      BLEDevice::getScan()->stop();
-      myDevice = new BLEAdvertisedDevice(advertisedDevice);
-      doConnect = true;
-      doScan = true;
-
-    }  // Found our server
-  }  // onResult
-};  // MyAdvertisedDeviceCallbacks
+// Define any constants or variables you might need for operating an LED
+#define LED 7
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("Starting Arduino BLE Client application...");
-  BLEDevice::init("Dev's Device"); // Not that it really matters since this device is created internally, but it doesn't hurt to rename this (at least I don't think so)
+  Serial.println("Serial Monitor initialized!!");
 
-  // Initialize and set-up your button and LED here
-  pinMode(LED, OUTPUT);
+
+  // Set up your pushbutton here
   pinMode(BUTTON, INPUT_PULLUP);
-  // Note: You might need to change the time for longer if you're scanning is slow
-  // Retrieve a Scanner and set the callback we want to use to be informed when we
-  // have detected a new device.  Specify that we want active scanning and start the
-  // scan to run for 5 seconds.
-  BLEScan *pBLEScan = BLEDevice::getScan();
-  pBLEScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
-  //pBLEScan->setInterval(1349);
-  //pBLEScan->setWindow(449);
-  pBLEScan->setActiveScan(true);
-  pBLEScan->start(5, false);
+
+  // Set up your LED here
+  pinMode(LED, OUTPUT);
+
+  // Setting up your Bluetooth Device
+  BLEDevice::init("Kirtan's ESP Controller");  // Replace with name of your Bluetooth device, just make this something easily identifiable so it can be found via Bluetooth scanner
+  BLEServer *pServer = BLEDevice::createServer();                      // Using the BLEDevice object that you just initiated, create a Server object
+  BLEService *pService = pServer->createService(SERVICE_UUID);                    // Using the Server object that you just created, create a Service with your specific UIUD that you defined in TODO #1
+
+  // Following this trend, use the Service object you just created to create a characteristic (which we defined earlier)
+  pCharacteristic = pService->createCharacteristic(CHARACTERISTIC_UUID
+    , BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
+  );
+
+
+  // Create a Second Characteristic using the same service to handle messaging functionality
+  pSecondCharacteristic = pService->createCharacteristic(CHARACTERISTICTWO_UUID
+    , BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY | BLECharacteristic::PROPERTY_WRITE
+  );
+  // We can now start our service :)
+  pService->start();
+
+  // This part is where our Bluetooth device starts advertising its presence to surrounding receivers
+  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // determines the minimum gap between communications
+  // pAdvertising->setMaxPreferred(0x12);
+  BLEDevice::startAdvertising();
+
+  Serial.println("BLE Set-up complete");
 }
 
-String lastMessage;
-String lastMessageSent;
-String received;
+String lastmsg;
+bool ledstate;
+String lastMsgSent;
+String recieved;
 
 void loop() {
 
-  if (doConnect == true) {
-    if (connectToServer()) {
-      Serial.println("We are now connected to the BLE Server.");
-    } else {
-      Serial.println("We have failed to connect to the server; there is nothing more we will do.");
-    }
-    doConnect = false;
-  }
- 
-  if (connected) {
-      // Put your code for completing the task here
-    // String val = pRemoteCharacteristic->readValue();
- 
-    // if (!val.isEmpty()) {
-    //   Serial.println(val.c_str());
-    //   digitalWrite(LED, 1);
 
-    // } else {
-    //   digitalWrite(LED, 0);
-    // }
-    // val = String();
-    if (Serial.available()) {
-      String msg = Serial.readStringUntil('\n');
-      msg.trim();
-      pRemoteCharacteristicWrite->writeValue(msg);
-      lastMessageSent = msg;
+  String value = pSecondCharacteristic->getValue();
+
+  if ((value != lastmsg)) {
+    lastmsg = pSecondCharacteristic->getValue();
+    Serial.println(value);
+    if (lastmsg != lastMsgSent) {
+    digitalWrite(LED,1);
+    delay(1000);
+    digitalWrite(LED,0);
     }
-    else if (pRemoteCharacteristic->readValue() != lastMessage) { //&& pRemoteCharacteristic->readValue() != lastMessageSent / && received != lastMessage
-      lastMessage = pRemoteCharacteristic->readValue();
-      //received = lastMessage;
-      Serial.println(lastMessage);
-      if (lastMessage != lastMessageSent) {
-        digitalWrite(LED, 1);
-        delay(1000);
-        digitalWrite(LED, 0);
-      }
-    }
+
+  } else if (Serial.available()) {
+    String msg = Serial.readStringUntil('\n');
+    msg.trim();
+    pCharacteristic->setValue(msg);
+    lastMsgSent = msg;
   }
-  delay(50);
+
+  delay(50);  // Small delay to reduce CPU usage
 }
